@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --color-titan-dark: #0f172a;
+  --color-titan-navy: #1e293b;
+  --color-titan-slate: #334155;
+  --color-titan-cyan: #06b6d4;
+  --color-titan-cyan-light: #22d3ee;
+  --color-titan-green: #10b981;
+  --color-titan-red: #ef4444;
+  --color-titan-orange: #f97316;
+  --color-titan-yellow: #eab308;
+}
+
+body {
+  margin: 0;
+  background: var(--color-titan-dark);
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Score circle animation */
+@keyframes score-fill {
+  from { stroke-dashoffset: 283; }
+}
+
+.score-circle {
+  animation: score-fill 1.5s ease-out;
+}
+
+/* Fade in */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+
+/* Progress bar */
+.progress-fill {
+  transition: width 0.5s ease-out;
+}
