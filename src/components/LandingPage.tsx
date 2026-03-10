@@ -6,16 +6,18 @@ interface Props {
 
 export function LandingPage({ onStart }: Props) {
   return (
-    <div className="min-h-screen bg-[#070b15] text-white">
-      <header className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 py-6 flex items-center justify-between">
+    <div className="min-h-screen bg-[#060b16] text-white">
+      <div className="absolute inset-0 pointer-events-none opacity-40 [background:radial-gradient(circle_at_20%_10%,rgba(34,211,238,0.14),transparent_35%),radial-gradient(circle_at_90%_0%,rgba(16,185,129,0.10),transparent_30%)]" />
+
+      <header className="relative z-10 border-b border-white/10 backdrop-blur">
+        <div className="max-w-[1280px] mx-auto px-6 lg:px-12 py-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-titan-cyan to-titan-green flex items-center justify-center font-bold text-[#070b15]">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-titan-cyan to-titan-green flex items-center justify-center font-bold text-[#060b16]">
               T
             </div>
-            <div className="leading-tight">
-              <p className="font-semibold text-lg tracking-tight">TitanGuard QuickScore</p>
-              <p className="text-xs text-gray-400 uppercase tracking-[0.2em]">Security Snapshot</p>
+            <div>
+              <p className="font-semibold text-lg leading-tight">TitanGuard QuickScore</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-gray-400">Security Snapshot</p>
             </div>
           </div>
 
@@ -30,118 +32,129 @@ export function LandingPage({ onStart }: Props) {
         </div>
       </header>
 
-      <main>
-        {/* Hero */}
-        <section className="max-w-7xl mx-auto px-6 lg:px-10 py-20 lg:py-28">
-          <div className="grid lg:grid-cols-2 gap-14 items-center">
+      <main className="relative z-10">
+        {/* HERO */}
+        <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pt-20 lg:pt-28 pb-16 lg:pb-22">
+          <div className="grid md:grid-cols-2 gap-10 lg:gap-16 items-center">
             <div>
-              <p className="inline-flex px-4 py-1.5 rounded-full bg-white/5 border border-white/15 text-sm text-gray-200 mb-8">
+              <div className="inline-flex px-4 py-2 rounded-full border border-white/15 bg-white/5 text-sm text-gray-200 mb-8">
                 Free assessment • No signup • ~5 minutes
-              </p>
+              </div>
 
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.08] mb-7">
-                Know your security posture
-                <span className="block text-titan-cyan">before attackers do.</span>
+              <h1 className="text-[2.6rem] leading-[1.05] md:text-[3.2rem] lg:text-[4rem] font-bold tracking-tight mb-6 max-w-[16ch]">
+                Know your security posture <span className="text-titan-cyan">before attackers do.</span>
               </h1>
 
-              <p className="text-lg md:text-xl text-gray-300 leading-relaxed max-w-xl mb-10">
-                Answer {totalQuestions} focused questions across {categories.length} domains and get an instant score with clear,
-                prioritized actions.
+              <p className="text-lg lg:text-xl text-gray-300 leading-relaxed max-w-[52ch] mb-9">
+                Answer {totalQuestions} focused questions across {categories.length} domains and get an instant score with a prioritized action plan.
               </p>
 
-              <div className="flex flex-wrap gap-4 items-center">
+              <div className="flex flex-wrap items-center gap-4">
                 <button
                   onClick={onStart}
-                  className="bg-gradient-to-r from-titan-cyan to-titan-green text-[#070b15] font-bold text-base md:text-lg px-8 py-4 rounded-xl hover:opacity-95 transition-opacity cursor-pointer"
+                  className="bg-gradient-to-r from-titan-cyan to-titan-green text-[#060b16] font-bold text-base lg:text-lg px-8 py-4 rounded-xl hover:brightness-110 transition-all cursor-pointer"
                 >
                   Start Free Assessment →
                 </button>
-                <p className="text-sm text-gray-400">Instant results, no email required.</p>
+                <span className="text-sm text-gray-400">Instant results. No email wall.</span>
               </div>
             </div>
 
-            <div className="bg-white/5 border border-white/15 rounded-2xl p-7 lg:p-8">
-              <h2 className="text-xl font-semibold mb-6">What you get instantly</h2>
+            <div className="rounded-2xl border border-white/15 bg-[#0d1527]/85 p-7 lg:p-9 shadow-2xl shadow-black/35">
+              <p className="text-xs uppercase tracking-[0.2em] text-titan-cyan/90 mb-5">Immediate Output</p>
 
-              <div className="space-y-4 text-gray-200">
-                <div className="flex items-start gap-3">
-                  <span className="text-titan-green mt-0.5">●</span>
-                  <p>Overall risk score (0–100)</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-titan-green mt-0.5">●</span>
-                  <p>Domain-by-domain gap breakdown</p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-titan-green mt-0.5">●</span>
-                  <p>Priority recommendations you can execute immediately</p>
-                </div>
+              <div className="space-y-3 text-gray-200 mb-7">
+                <p>• Overall risk score (0–100)</p>
+                <p>• Domain-by-domain gap breakdown</p>
+                <p>• Priority-ranked remediation actions</p>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 mt-8">
-                <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider">Questions</p>
-                  <p className="text-2xl font-bold">{totalQuestions}</p>
-                </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider">Domains</p>
-                  <p className="text-2xl font-bold">{categories.length}</p>
-                </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-center">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider">Time</p>
-                  <p className="text-2xl font-bold">5m</p>
-                </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Metric label="Questions" value={String(totalQuestions)} />
+                <Metric label="Domains" value={String(categories.length)} />
+                <Metric label="Time" value="5m" />
               </div>
             </div>
           </div>
         </section>
 
-        {/* Framework strip */}
-        <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-8">
-          <div className="rounded-xl border border-white/10 bg-white/3 px-5 py-4 flex flex-wrap items-center justify-center gap-4 text-sm text-gray-200">
+        {/* FRAMEWORK BAR */}
+        <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pb-12 lg:pb-16">
+          <div className="rounded-xl border border-white/10 bg-white/5 px-6 py-4 flex flex-wrap items-center justify-center gap-5 text-sm text-gray-200">
             <span className="font-semibold text-titan-cyan">Framework aligned</span>
-            <span>🛡 NIST</span>
-            <span>📋 SOC 2</span>
-            <span>🏥 HIPAA</span>
-            <span>💳 PCI DSS</span>
+            <span>NIST</span>
+            <span>SOC 2</span>
+            <span>HIPAA</span>
+            <span>PCI DSS</span>
           </div>
         </section>
 
-        {/* Domains */}
-        <section className="max-w-7xl mx-auto px-6 lg:px-10 py-14 lg:py-20">
-          <div className="mb-10">
-            <p className="text-sm uppercase tracking-[0.2em] text-gray-400 mb-3">Coverage</p>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight">What We Assess</h2>
+        {/* DOMAINS */}
+        <section className="max-w-[1280px] mx-auto px-6 lg:px-12 py-12 lg:py-20">
+          <div className="mb-10 lg:mb-12">
+            <p className="text-xs uppercase tracking-[0.24em] text-gray-400 mb-3">Coverage</p>
+            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight">What We Assess</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-7">
             {categories.map((cat) => (
-              <article key={cat.id} className="rounded-2xl border border-white/10 bg-white/5 p-6 min-h-[220px]">
+              <article key={cat.id} className="rounded-2xl border border-white/10 bg-[#0e172b]/70 p-6 lg:p-7 min-h-[212px]">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-2xl">{cat.icon}</span>
-                  <span className="text-xs text-gray-400 uppercase tracking-[0.18em]">{cat.questions.length} Q</span>
+                  <span className="text-xs uppercase tracking-[0.2em] text-gray-400">{cat.questions.length} Q</span>
                 </div>
-                <h3 className="text-lg font-semibold mb-2">{cat.name}</h3>
-                <p className="text-gray-300 leading-relaxed text-sm">{cat.description}</p>
+                <h3 className="text-xl font-semibold mb-2">{cat.name}</h3>
+                <p className="text-gray-300 leading-relaxed">{cat.description}</p>
               </article>
             ))}
           </div>
         </section>
 
-        {/* Bottom CTA */}
-        <section className="max-w-7xl mx-auto px-6 lg:px-10 pb-20 lg:pb-24">
-          <div className="rounded-2xl border border-titan-cyan/40 bg-gradient-to-r from-titan-cyan/10 to-titan-green/10 p-8 md:p-10 text-center">
-            <h2 className="text-2xl md:text-3xl font-bold mb-3">Get your score in 5 minutes</h2>
-            <p className="text-gray-300 mb-7">No forms. No friction. Just a clear security baseline.</p>
+        {/* HOW IT WORKS */}
+        <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pb-12 lg:pb-18">
+          <div className="rounded-2xl border border-white/10 bg-[#0d162a]/70 p-7 lg:p-10">
+            <h2 className="text-2xl lg:text-3xl font-bold mb-8">How It Works</h2>
+            <div className="grid md:grid-cols-3 gap-6 lg:gap-8 text-gray-200">
+              <Step n="01" title="Answer" text="Complete 30 security questions across core control domains." />
+              <Step n="02" title="Score" text="Get your risk score and domain-level posture immediately." />
+              <Step n="03" title="Act" text="Follow prioritized recommendations to close the biggest gaps first." />
+            </div>
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pb-20 lg:pb-24">
+          <div className="rounded-2xl border border-titan-cyan/35 bg-gradient-to-r from-titan-cyan/12 to-titan-green/12 p-8 lg:p-11 text-center">
+            <h2 className="text-2xl lg:text-3xl font-bold mb-3">Get your security baseline in 5 minutes</h2>
+            <p className="text-gray-300 mb-7">No forms. No friction. Clear signal on where you stand.</p>
             <button
               onClick={onStart}
-              className="bg-gradient-to-r from-titan-cyan to-titan-green text-[#070b15] font-bold text-base md:text-lg px-8 py-4 rounded-xl hover:opacity-95 transition-opacity cursor-pointer"
+              className="bg-gradient-to-r from-titan-cyan to-titan-green text-[#060b16] font-bold text-base lg:text-lg px-8 py-4 rounded-xl hover:brightness-110 transition-all cursor-pointer"
             >
               Start Free Assessment →
             </button>
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-center">
+      <p className="text-[11px] uppercase tracking-[0.17em] text-gray-400 mb-1">{label}</p>
+      <p className="text-2xl font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function Step({ n, title, text }: { n: string; title: string; text: string }) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-[0.2em] text-titan-cyan/90 mb-2">{n}</p>
+      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <p className="text-gray-300 leading-relaxed">{text}</p>
     </div>
   );
 }
