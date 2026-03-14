@@ -1,5 +1,8 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+
+type MetaRecord = Record<string, string>;
 
 const utmArgs = {
   utmSource: v.string(),
@@ -19,13 +22,12 @@ const EVENT_TYPE_ALLOWLIST = new Set([
   "follow_up_requested",
 ]);
 
-const META_KEY_ALLOWLIST = new Set([
-  "employeeCount",
-  "overallScore",
-  "riskLevel",
-  "destination",
-  "channel",
-]);
+const META_KEY_ALLOWLIST = new Set(["employeeCount", "overallScore", "riskLevel", "destination", "channel"]);
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const RATE_LIMIT_MAX_ATTEMPTS = 5;
+const RATE_LIMIT_BLOCK_MS = 30 * 60 * 1000;
+const HANDOFF_MAX_ATTEMPTS = 3;
+const HANDOFF_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000];
 
 function clampString(value: string | undefined, max: number): string | undefined {
   if (value === undefined) return undefined;
@@ -34,16 +36,132 @@ function clampString(value: string | undefined, max: number): string | undefined
   return trimmed.slice(0, max);
 }
 
-function sanitizeMeta(meta: Record<string, string> | undefined): Record<string, string> | undefined {
+function sanitizePath(value: string | undefined, fallback = "/"): string {
+  const trimmed = clampString(value, 400) || fallback;
+  return trimmed.replace(/([?&])(token|key|email|phone|contactEmail|contactName)=[^&]+/gi, "$1$2=[redacted]");
+}
+
+function sanitizeMeta(meta: MetaRecord | undefined): MetaRecord | undefined {
   if (!meta) return undefined;
   const entries = Object.entries(meta)
     .filter(([key]) => META_KEY_ALLOWLIST.has(key))
     .slice(0, 10)
     .map(([key, value]) => [key, String(value).slice(0, 200)] as const);
-
   if (entries.length === 0) return undefined;
   return Object.fromEntries(entries);
 }
+
+function simpleHash(input: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `fnv-${(hash >>> 0).toString(16)}`;
+}
+
+function normalizeEvent(args: {
+  assessmentId?: string;
+  companyName?: string;
+  contactEmail?: string;
+  contactName?: string;
+  eventType: string;
+  eventLabel?: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmTerm?: string;
+  utmContent?: string;
+  landingPath: string;
+  referrer?: string;
+  meta?: MetaRecord;
+}) {
+  const sanitized = {
+    assessmentId: args.assessmentId,
+    companyName: clampString(args.companyName, 120),
+    contactEmail: clampString(args.contactEmail, 160),
+    contactName: clampString(args.contactName, 120),
+    eventType: args.eventType,
+    eventLabel: clampString(args.eventLabel, 80),
+    utmSource: clampString(args.utmSource, 80) || "direct",
+    utmMedium: clampString(args.utmMedium, 80) || "none",
+    utmCampaign: clampString(args.utmCampaign, 120) || "quickscore-default",
+    utmTerm: clampString(args.utmTerm, 120),
+    utmContent: clampString(args.utmContent, 120),
+    landingPath: sanitizePath(args.landingPath),
+    referrer: sanitizePath(args.referrer, "") || undefined,
+    meta: sanitizeMeta(args.meta),
+  };
+  const approxPayloadSize = JSON.stringify(sanitized).length;
+  if (approxPayloadSize > 4000) throw new Error("event payload too large");
+  return sanitized;
+}
+
+async function enforceRateLimit(ctx: any, key: string) {
+  const now = Date.now();
+  const current = await ctx.db.query("submitRateLimits").withIndex("by_key", (q: any) => q.eq("key", key)).unique();
+  if (!current) {
+    await ctx.db.insert("submitRateLimits", {
+      key,
+      windowStartedAt: now,
+      attempts: 1,
+      lastSeenAt: now,
+    });
+    return;
+  }
+
+  if (current.blockedUntil && current.blockedUntil > now) {
+    throw new Error("rate limit exceeded");
+  }
+
+  const withinWindow = now - current.windowStartedAt <= RATE_LIMIT_WINDOW_MS;
+  const attempts = withinWindow ? current.attempts + 1 : 1;
+  const patch: Record<string, number> = {
+    attempts,
+    lastSeenAt: now,
+    windowStartedAt: withinWindow ? current.windowStartedAt : now,
+  };
+
+  if (attempts > RATE_LIMIT_MAX_ATTEMPTS) {
+    patch.blockedUntil = now + RATE_LIMIT_BLOCK_MS;
+    await ctx.db.patch(current._id, patch);
+    throw new Error("rate limit exceeded");
+  }
+
+  if (current.blockedUntil) {
+    patch.blockedUntil = undefined as never;
+  }
+  await ctx.db.patch(current._id, patch);
+}
+
+async function verifyBotProofOrThrow(botProof: string, fingerprint: string) {
+  const raw = clampString(botProof, 400);
+  if (!raw) throw new Error("bot proof missing");
+  const [issuedAtRaw, nonce, providedSig] = raw.split(".");
+  if (!issuedAtRaw || !nonce || !providedSig) throw new Error("invalid bot proof");
+  const issuedAt = Number(issuedAtRaw);
+  if (!Number.isFinite(issuedAt)) throw new Error("invalid bot proof");
+  if (Date.now() - issuedAt > 15 * 60 * 1000) throw new Error("bot proof expired");
+  const secret = process.env.TITANGUARD_BOT_PROOF_SECRET;
+  if (!secret) throw new Error("bot proof secret missing");
+  const expected = simpleHash(`${issuedAt}.${nonce}.${fingerprint}.${secret}`);
+  if (expected !== providedSig) throw new Error("invalid bot proof");
+}
+
+export const issueBotProof = action({
+  args: { fingerprint: v.string() },
+  handler: async (_ctx, args) => {
+    const fingerprint = clampString(args.fingerprint, 120) || "anon";
+    const nonce = Math.random().toString(36).slice(2, 12);
+    const issuedAt = Date.now();
+    const secret = process.env.TITANGUARD_BOT_PROOF_SECRET;
+    if (!secret) {
+      throw new Error("bot proof secret missing");
+    }
+    const signature = simpleHash(`${issuedAt}.${nonce}.${fingerprint}.${secret}`);
+    return `${issuedAt}.${nonce}.${signature}`;
+  },
+});
 
 export const submit = mutation({
   args: {
@@ -53,9 +171,14 @@ export const submit = mutation({
     industry: v.string(),
     employeeCount: v.string(),
     responses: v.record(v.string(), v.record(v.string(), v.number())),
+    botProof: v.string(),
+    fingerprint: v.string(),
     ...utmArgs,
   },
   handler: async (ctx, args) => {
+    await verifyBotProofOrThrow(args.botProof, args.fingerprint);
+    await enforceRateLimit(ctx, `${clampString(args.fingerprint, 120) || "anon"}:${clampString(args.contactEmail, 160) || "unknown"}`);
+
     const categoryScores: Record<string, number> = {};
     let totalPoints = 0;
     let maxPoints = 0;
@@ -73,7 +196,6 @@ export const submit = mutation({
     }
 
     const overallScore = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
-
     let riskLevel: string;
     if (overallScore >= 80) riskLevel = "low";
     else if (overallScore >= 60) riskLevel = "medium";
@@ -81,12 +203,24 @@ export const submit = mutation({
     else riskLevel = "critical";
 
     const id = await ctx.db.insert("assessments", {
-      ...args,
+      companyName: clampString(args.companyName, 120) || "Unknown",
+      contactEmail: clampString(args.contactEmail, 160) || "unknown@example.invalid",
+      contactName: clampString(args.contactName, 120) || "Unknown",
+      industry: clampString(args.industry, 80) || "Other",
+      employeeCount: clampString(args.employeeCount, 40) || "Unknown",
+      responses: args.responses,
       overallScore,
       categoryScores,
       riskLevel,
       completedAt: Date.now(),
       reportViewed: false,
+      utmSource: clampString(args.utmSource, 80) || "direct",
+      utmMedium: clampString(args.utmMedium, 80) || "none",
+      utmCampaign: clampString(args.utmCampaign, 120) || "quickscore-default",
+      utmTerm: clampString(args.utmTerm, 120),
+      utmContent: clampString(args.utmContent, 120),
+      landingPath: sanitizePath(args.landingPath),
+      referrer: sanitizePath(args.referrer, "") || undefined,
       lifecycleStage: "assessed",
       bookedCall: false,
       followUpRequested: false,
@@ -94,23 +228,33 @@ export const submit = mutation({
 
     await ctx.db.insert("leadEvents", {
       assessmentId: id,
-      companyName: args.companyName,
-      contactEmail: args.contactEmail,
-      contactName: args.contactName,
+      companyName: clampString(args.companyName, 120),
+      contactEmail: clampString(args.contactEmail, 160),
+      contactName: clampString(args.contactName, 120),
       eventType: "assessment_completed",
       eventLabel: riskLevel,
       createdAt: Date.now(),
-      utmSource: args.utmSource,
-      utmMedium: args.utmMedium,
-      utmCampaign: args.utmCampaign,
-      utmTerm: args.utmTerm,
-      utmContent: args.utmContent,
-      landingPath: args.landingPath,
-      referrer: args.referrer,
-      meta: {
-        overallScore: String(overallScore),
-        riskLevel,
-      },
+      utmSource: clampString(args.utmSource, 80) || "direct",
+      utmMedium: clampString(args.utmMedium, 80) || "none",
+      utmCampaign: clampString(args.utmCampaign, 120) || "quickscore-default",
+      utmTerm: clampString(args.utmTerm, 120),
+      utmContent: clampString(args.utmContent, 120),
+      landingPath: sanitizePath(args.landingPath),
+      referrer: sanitizePath(args.referrer, "") || undefined,
+      meta: { overallScore: String(overallScore), riskLevel },
+    });
+
+    const payloadHash = simpleHash(JSON.stringify({ id, overallScore, riskLevel }));
+    const now = Date.now();
+    await ctx.db.insert("leadHandoffs", {
+      assessmentId: id,
+      destination: process.env.TITANGUARD_LEAD_WEBHOOK_URL || "configured-at-runtime",
+      status: "pending",
+      payloadHash,
+      attempts: 0,
+      createdAt: now,
+      updatedAt: now,
+      nextAttemptAt: now,
     });
 
     return id;
@@ -143,49 +287,67 @@ export const logEvent = mutation({
     meta: v.optional(v.record(v.string(), v.string())),
   },
   handler: async (ctx, args) => {
-    if (!EVENT_TYPE_ALLOWLIST.has(args.eventType)) {
-      throw new Error("invalid eventType");
-    }
-
-    const sanitized = {
-      assessmentId: args.assessmentId,
-      companyName: clampString(args.companyName, 120),
-      contactEmail: clampString(args.contactEmail, 160),
-      contactName: clampString(args.contactName, 120),
-      eventType: args.eventType,
-      eventLabel: clampString(args.eventLabel, 80),
-      utmSource: clampString(args.utmSource, 80) || "direct",
-      utmMedium: clampString(args.utmMedium, 80) || "none",
-      utmCampaign: clampString(args.utmCampaign, 120) || "quickscore-default",
-      utmTerm: clampString(args.utmTerm, 120),
-      utmContent: clampString(args.utmContent, 120),
-      landingPath: clampString(args.landingPath, 400) || "/",
-      referrer: clampString(args.referrer, 240),
-      meta: sanitizeMeta(args.meta),
-    };
-
-    const approxPayloadSize = JSON.stringify(sanitized).length;
-    if (approxPayloadSize > 4000) {
-      throw new Error("event payload too large");
-    }
-
-    await ctx.db.insert("leadEvents", {
-      ...sanitized,
-      createdAt: Date.now(),
-    });
+    if (!EVENT_TYPE_ALLOWLIST.has(args.eventType)) throw new Error("invalid eventType");
+    const sanitized = normalizeEvent(args);
+    await ctx.db.insert("leadEvents", { ...sanitized, createdAt: Date.now() });
 
     if (args.assessmentId && args.eventType === "book_call_clicked") {
-      await ctx.db.patch(args.assessmentId, {
-        bookedCall: true,
-        lifecycleStage: "book_call_clicked",
+      await ctx.db.patch(args.assessmentId, { bookedCall: true, lifecycleStage: "book_call_clicked" });
+    }
+    if (args.assessmentId && args.eventType === "follow_up_requested") {
+      await ctx.db.patch(args.assessmentId, { followUpRequested: true, lifecycleStage: "follow_up_requested" });
+    }
+  },
+});
+
+export const processLeadHandoff = action({
+  args: { handoffId: v.id("leadHandoffs") },
+  handler: async (ctx, args) => {
+    const handoff = await ctx.runQuery(internal.assessments.getHandoffForProcessing, { handoffId: args.handoffId });
+    if (!handoff) throw new Error("handoff not found");
+
+    const endpoint = process.env.TITANGUARD_LEAD_WEBHOOK_URL;
+    const secret = process.env.TITANGUARD_LEAD_WEBHOOK_SECRET;
+    if (!endpoint || !secret) {
+      await ctx.runMutation(internal.assessments.recordHandoffFailure, {
+        handoffId: args.handoffId,
+        responseCode: 500,
+        responsePreview: "handoff env missing",
       });
+      return { ok: false };
     }
 
-    if (args.assessmentId && args.eventType === "follow_up_requested") {
-      await ctx.db.patch(args.assessmentId, {
-        followUpRequested: true,
-        lifecycleStage: "follow_up_requested",
+    const body = JSON.stringify(handoff.payload);
+    const signature = simpleHash(`${body}.${secret}`);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-titanguard-signature": signature,
+          "x-titanguard-event": "lead_assessment",
+        },
+        body,
       });
+      const preview = (await response.text()).slice(0, 200);
+      if (!response.ok) {
+        await ctx.runMutation(internal.assessments.recordHandoffFailure, {
+          handoffId: args.handoffId,
+          responseCode: response.status,
+          responsePreview: preview,
+        });
+        return { ok: false };
+      }
+      await ctx.runMutation(internal.assessments.recordHandoffSuccess, { handoffId: args.handoffId, responseCode: response.status });
+      return { ok: true };
+    } catch (error) {
+      await ctx.runMutation(internal.assessments.recordHandoffFailure, {
+        handoffId: args.handoffId,
+        responseCode: 0,
+        responsePreview: error instanceof Error ? error.message.slice(0, 200) : "unknown error",
+      });
+      return { ok: false };
     }
   },
 });
@@ -196,10 +358,7 @@ export const getStats = query({
     const assessments = await ctx.db.query("assessments").collect();
     return {
       total: assessments.length,
-      avgScore:
-        assessments.length > 0
-          ? Math.round(assessments.reduce((sum, a) => sum + a.overallScore, 0) / assessments.length)
-          : 0,
+      avgScore: assessments.length > 0 ? Math.round(assessments.reduce((sum, a) => sum + a.overallScore, 0) / assessments.length) : 0,
       byRisk: {
         critical: assessments.filter((a) => a.riskLevel === "critical").length,
         high: assessments.filter((a) => a.riskLevel === "high").length,
@@ -207,5 +366,112 @@ export const getStats = query({
         low: assessments.filter((a) => a.riskLevel === "low").length,
       },
     };
+  },
+});
+
+export const getHandoffForProcessing = query({
+  args: { handoffId: v.id("leadHandoffs") },
+  handler: async (ctx, args) => {
+    const handoff = await ctx.db.get(args.handoffId);
+    if (!handoff) return null;
+    const assessment = await ctx.db.get(handoff.assessmentId);
+    if (!assessment) return null;
+    return {
+      handoff,
+      payload: {
+        assessmentId: assessment._id,
+        companyName: assessment.companyName,
+        contactEmail: assessment.contactEmail,
+        contactName: assessment.contactName,
+        industry: assessment.industry,
+        employeeCount: assessment.employeeCount,
+        overallScore: assessment.overallScore,
+        riskLevel: assessment.riskLevel,
+        utmSource: assessment.utmSource,
+        utmMedium: assessment.utmMedium,
+        utmCampaign: assessment.utmCampaign,
+        completedAt: assessment.completedAt,
+      },
+    };
+  },
+});
+
+export const recordHandoffSuccess = internalMutation({
+  args: { handoffId: v.id("leadHandoffs"), responseCode: v.number() },
+  handler: async (ctx, args) => {
+    const handoff = await ctx.db.get(args.handoffId);
+    if (!handoff) return;
+    await ctx.db.patch(args.handoffId, {
+      status: "delivered",
+      attempts: handoff.attempts + 1,
+      lastAttemptAt: Date.now(),
+      updatedAt: Date.now(),
+      deadLetterReason: undefined,
+    });
+    await ctx.db.insert("handoffAttempts", {
+      handoffId: args.handoffId,
+      status: "delivered",
+      responseCode: args.responseCode,
+      responsePreview: "ok",
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const recordHandoffFailure = internalMutation({
+  args: {
+    handoffId: v.id("leadHandoffs"),
+    responseCode: v.number(),
+    responsePreview: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const handoff = await ctx.db.get(args.handoffId);
+    if (!handoff) return;
+    const attempts = handoff.attempts + 1;
+    const shouldDeadLetter = attempts >= HANDOFF_MAX_ATTEMPTS;
+    await ctx.db.patch(args.handoffId, {
+      status: shouldDeadLetter ? "dead_letter" : "retry_pending",
+      attempts,
+      lastAttemptAt: Date.now(),
+      nextAttemptAt: shouldDeadLetter ? undefined : Date.now() + HANDOFF_RETRY_DELAYS_MS[Math.min(attempts - 1, HANDOFF_RETRY_DELAYS_MS.length - 1)],
+      updatedAt: Date.now(),
+      deadLetterReason: shouldDeadLetter ? args.responsePreview.slice(0, 200) : undefined,
+    });
+    await ctx.db.insert("handoffAttempts", {
+      handoffId: args.handoffId,
+      status: shouldDeadLetter ? "dead_letter" : "retry_pending",
+      responseCode: args.responseCode,
+      responsePreview: args.responsePreview.slice(0, 200),
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const simulateRateLimitForTest = internalAction({
+  args: { fingerprint: v.string(), contactEmail: v.string(), botProof: v.string() },
+  handler: async (ctx, args) => {
+    let blocked = false;
+    for (let i = 0; i < RATE_LIMIT_MAX_ATTEMPTS + 2; i += 1) {
+      try {
+        await ctx.runMutation(internal.assessments.testBoundaryCheck, {
+          fingerprint: args.fingerprint,
+          contactEmail: args.contactEmail,
+          botProof: args.botProof,
+        });
+      } catch {
+        blocked = true;
+        break;
+      }
+    }
+    return { blocked };
+  },
+});
+
+export const testBoundaryCheck = internalMutation({
+  args: { fingerprint: v.string(), contactEmail: v.string(), botProof: v.string() },
+  handler: async (ctx, args) => {
+    await verifyBotProofOrThrow(args.botProof, args.fingerprint);
+    await enforceRateLimit(ctx, `${clampString(args.fingerprint, 120) || "anon"}:${clampString(args.contactEmail, 160) || "unknown"}`);
+    return true;
   },
 });

@@ -19,6 +19,10 @@ See `sample-captured-lead-record.json` for the expected assessment + event snaps
 - lifecycle stage
 - thank-you/book-call event trail
 
+## Boundary-control evidence
+- `abuse-control-proof.md` documents rate-limit and bot-proof rejection behavior
+- `handoff-failure-proof.md` documents authenticated handoff, retry, and dead-letter behavior
+
 ## Security acceptance notes
 - `security-acceptance-gap-review.md` documents what is satisfied in-branch versus what still requires production-boundary implementation.
-- `retention-access-policy-draft.md` captures the draft retention/access policy pending owner confirmation.
+- `retention-access-policy.md` captures the final retention/access policy and named owners.

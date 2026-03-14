@@ -43,4 +43,33 @@ export default defineSchema({
     referrer: v.optional(v.string()),
     meta: v.optional(v.record(v.string(), v.string())),
   }).index("by_assessment", ["assessmentId"]),
+
+  submitRateLimits: defineTable({
+    key: v.string(),
+    windowStartedAt: v.number(),
+    attempts: v.number(),
+    blockedUntil: v.optional(v.number()),
+    lastSeenAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  leadHandoffs: defineTable({
+    assessmentId: v.id("assessments"),
+    destination: v.string(),
+    status: v.string(),
+    payloadHash: v.string(),
+    attempts: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    nextAttemptAt: v.optional(v.number()),
+    deadLetterReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_status", ["status"]),
+
+  handoffAttempts: defineTable({
+    handoffId: v.id("leadHandoffs"),
+    status: v.string(),
+    responseCode: v.optional(v.number()),
+    responsePreview: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_handoff", ["handoffId"]),
 });
