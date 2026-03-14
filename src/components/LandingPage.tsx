@@ -33,20 +33,19 @@ export function LandingPage({ onStart }: Props) {
       </header>
 
       <main className="relative z-10">
-        {/* HERO */}
         <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pt-20 lg:pt-28 pb-16 lg:pb-22">
           <div className="grid md:grid-cols-2 gap-10 lg:gap-16 items-center">
             <div>
               <div className="inline-flex px-4 py-2 rounded-full border border-white/15 bg-white/5 text-sm text-gray-200 mb-8">
-                Free assessment • No signup • ~5 minutes
+                Assess → Book call → Contact capture
               </div>
 
               <h1 className="text-[2.6rem] leading-[1.05] md:text-[3.2rem] lg:text-[4rem] font-bold tracking-tight mb-6 max-w-[16ch]">
-                Know your security posture <span className="text-titan-cyan">before attackers do.</span>
+                Benchmark your security posture <span className="text-titan-cyan">before your next audit, renewal, or breach scare.</span>
               </h1>
 
               <p className="text-lg lg:text-xl text-gray-300 leading-relaxed max-w-[52ch] mb-9">
-                Answer {totalQuestions} focused questions across {categories.length} domains and get an instant score with a prioritized action plan.
+                Answer {totalQuestions} focused questions across {categories.length} domains and get an instant score, prioritized action plan, and a fast path to a remediation call if your gaps need hands-on help.
               </p>
 
               <div className="flex flex-wrap items-center gap-4">
@@ -54,19 +53,19 @@ export function LandingPage({ onStart }: Props) {
                   onClick={onStart}
                   className="bg-gradient-to-r from-titan-cyan to-titan-green text-[#060b16] font-bold text-base lg:text-lg px-8 py-4 rounded-xl hover:brightness-110 transition-all cursor-pointer"
                 >
-                  Start Free Assessment →
+                  Start Assessment →
                 </button>
-                <span className="text-sm text-gray-400">Instant results. No email wall.</span>
+                <span className="text-sm text-gray-400">Instant results, contact capture, then optional booking.</span>
               </div>
             </div>
 
             <div className="rounded-2xl border border-white/15 bg-[#0d1527]/85 p-7 lg:p-9 shadow-2xl shadow-black/35">
-              <p className="text-xs uppercase tracking-[0.2em] text-titan-cyan/90 mb-5">Immediate Output</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-titan-cyan/90 mb-5">Built for regulated teams</p>
 
-              <div className="space-y-3 text-gray-200 mb-7">
-                <p>• Overall risk score (0–100)</p>
-                <p>• Domain-by-domain gap breakdown</p>
-                <p>• Priority-ranked remediation actions</p>
+              <div className="space-y-4 text-gray-200 mb-7">
+                <p><strong className="text-white">HIPAA teams:</strong> identify control gaps before a customer questionnaire or BA review exposes them.</p>
+                <p><strong className="text-white">SOC 2 teams:</strong> see where policies, access, logging, and vendor controls need tightening.</p>
+                <p><strong className="text-white">NAIC-aligned insurance orgs:</strong> surface governance and third-party risk issues before they become regulatory headaches.</p>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -78,18 +77,16 @@ export function LandingPage({ onStart }: Props) {
           </div>
         </section>
 
-        {/* FRAMEWORK BAR */}
         <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pb-12 lg:pb-16">
           <div className="rounded-xl border border-white/10 bg-white/5 px-6 py-4 flex flex-wrap items-center justify-center gap-5 text-sm text-gray-200">
-            <span className="font-semibold text-titan-cyan">Framework aligned</span>
-            <span>NIST</span>
-            <span>SOC 2</span>
+            <span className="font-semibold text-titan-cyan">Persona aligned</span>
             <span>HIPAA</span>
-            <span>PCI DSS</span>
+            <span>SOC 2</span>
+            <span>NAIC Model Law 668</span>
+            <span>NIST</span>
           </div>
         </section>
 
-        {/* DOMAINS */}
         <section className="max-w-[1280px] mx-auto px-6 lg:px-12 py-12 lg:py-20">
           <div className="mb-10 lg:mb-12">
             <p className="text-xs uppercase tracking-[0.24em] text-gray-400 mb-3">Coverage</p>
@@ -110,28 +107,26 @@ export function LandingPage({ onStart }: Props) {
           </div>
         </section>
 
-        {/* HOW IT WORKS */}
         <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pb-12 lg:pb-18">
           <div className="rounded-2xl border border-white/10 bg-[#0d162a]/70 p-7 lg:p-10">
             <h2 className="text-2xl lg:text-3xl font-bold mb-8">How It Works</h2>
             <div className="grid md:grid-cols-3 gap-6 lg:gap-8 text-gray-200">
-              <Step n="01" title="Answer" text="Complete 30 security questions across core control domains." />
-              <Step n="02" title="Score" text="Get your risk score and domain-level posture immediately." />
-              <Step n="03" title="Act" text="Follow prioritized recommendations to close the biggest gaps first." />
+              <Step n="01" title="Assess" text="Complete 30 security questions tailored to regulated risk areas." />
+              <Step n="02" title="Book call" text="If the score exposes material gaps, book a review call directly from the results page." />
+              <Step n="03" title="Contact captured" text="Every completed assessment records contact and campaign attribution for follow-up." />
             </div>
           </div>
         </section>
 
-        {/* CTA */}
         <section className="max-w-[1280px] mx-auto px-6 lg:px-12 pb-20 lg:pb-24">
           <div className="rounded-2xl border border-titan-cyan/35 bg-gradient-to-r from-titan-cyan/12 to-titan-green/12 p-8 lg:p-11 text-center">
-            <h2 className="text-2xl lg:text-3xl font-bold mb-3">Get your security baseline in 5 minutes</h2>
-            <p className="text-gray-300 mb-7">No forms. No friction. Clear signal on where you stand.</p>
+            <h2 className="text-2xl lg:text-3xl font-bold mb-3">Get your security baseline before the next audit asks for proof</h2>
+            <p className="text-gray-300 mb-7">Fast enough for leadership. Specific enough for operators. Built for regulated revenue teams.</p>
             <button
               onClick={onStart}
               className="bg-gradient-to-r from-titan-cyan to-titan-green text-[#060b16] font-bold text-base lg:text-lg px-8 py-4 rounded-xl hover:brightness-110 transition-all cursor-pointer"
             >
-              Start Free Assessment →
+              Start Assessment →
             </button>
           </div>
         </section>

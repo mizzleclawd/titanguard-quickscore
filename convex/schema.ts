@@ -3,23 +3,44 @@ import { v } from "convex/values";
 
 export default defineSchema({
   assessments: defineTable({
-    // Company info
     companyName: v.string(),
     contactEmail: v.string(),
     contactName: v.string(),
     industry: v.string(),
     employeeCount: v.string(),
-
-    // Responses (category -> question index -> answer value 0-4)
     responses: v.record(v.string(), v.record(v.string(), v.number())),
-
-    // Computed scores
     overallScore: v.number(),
     categoryScores: v.record(v.string(), v.number()),
-    riskLevel: v.string(), // "critical" | "high" | "medium" | "low"
-    
-    // Metadata
+    riskLevel: v.string(),
     completedAt: v.number(),
     reportViewed: v.boolean(),
-  }),
+    utmSource: v.string(),
+    utmMedium: v.string(),
+    utmCampaign: v.string(),
+    utmTerm: v.optional(v.string()),
+    utmContent: v.optional(v.string()),
+    landingPath: v.string(),
+    referrer: v.optional(v.string()),
+    lifecycleStage: v.string(),
+    bookedCall: v.boolean(),
+    followUpRequested: v.boolean(),
+  }).index("by_email", ["contactEmail"]),
+
+  leadEvents: defineTable({
+    assessmentId: v.optional(v.id("assessments")),
+    companyName: v.optional(v.string()),
+    contactEmail: v.optional(v.string()),
+    contactName: v.optional(v.string()),
+    eventType: v.string(),
+    eventLabel: v.optional(v.string()),
+    createdAt: v.number(),
+    utmSource: v.string(),
+    utmMedium: v.string(),
+    utmCampaign: v.string(),
+    utmTerm: v.optional(v.string()),
+    utmContent: v.optional(v.string()),
+    landingPath: v.string(),
+    referrer: v.optional(v.string()),
+    meta: v.optional(v.record(v.string(), v.string())),
+  }).index("by_assessment", ["assessmentId"]),
 });
