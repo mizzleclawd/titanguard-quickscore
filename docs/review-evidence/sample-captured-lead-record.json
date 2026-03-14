@@ -1,0 +1,24 @@
+{
+  "assessment": {
+    "companyName": "Nashville CareOps",
+    "contactName": "Jamie Carter",
+    "contactEmail": "jamie@nashvillecareops.example",
+    "industry": "Healthcare",
+    "employeeCount": "51-200",
+    "utmSource": "linkedin",
+    "utmMedium": "paid-social",
+    "utmCampaign": "hipaa-q1",
+    "utmTerm": "hipaa security assessment",
+    "landingPath": "/titanguard-quickscore/?utm_source=linkedin&utm_medium=paid-social&utm_campaign=hipaa-q1&utm_term=hipaa%20security%20assessment",
+    "riskLevel": "high",
+    "lifecycleStage": "book_call_clicked",
+    "bookedCall": true,
+    "followUpRequested": false
+  },
+  "events": [
+    { "eventType": "contact_captured", "eventLabel": "Healthcare" },
+    { "eventType": "assessment_completed", "eventLabel": "high" },
+    { "eventType": "thank_you_viewed", "eventLabel": "high" },
+    { "eventType": "book_call_clicked", "eventLabel": "high" }
+  ]
+}

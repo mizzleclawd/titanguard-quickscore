@@ -6,6 +6,7 @@ interface CompanyInfo {
   contactEmail: string;
   industry: string;
   employeeCount: string;
+  trackingConsent: boolean;
 }
 
 interface Props {
@@ -44,18 +45,21 @@ export function IntakeForm({ onSubmit, onBack }: Props) {
     contactEmail: "",
     industry: "",
     employeeCount: "",
+    trackingConsent: false,
   });
 
-  const [errors, setErrors] = useState<Partial<CompanyInfo>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof CompanyInfo, string>>>({});
 
   const validate = (): boolean => {
-    const errs: Partial<CompanyInfo> = {};
+    const errs: Partial<Record<keyof CompanyInfo, string>> = {};
     if (!form.companyName.trim()) errs.companyName = "Required";
     if (!form.contactName.trim()) errs.contactName = "Required";
-    if (!form.contactEmail.trim() || !/\S+@\S+\.\S+/.test(form.contactEmail))
+    if (!form.contactEmail.trim() || !/\S+@\S+\.\S+/.test(form.contactEmail)) {
       errs.contactEmail = "Valid email required";
+    }
     if (!form.industry) errs.industry = "Select an industry";
     if (!form.employeeCount) errs.employeeCount = "Select a size";
+    if (!form.trackingConsent) errs.trackingConsent = "Consent required to continue";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -74,7 +78,7 @@ export function IntakeForm({ onSubmit, onBack }: Props) {
         <button onClick={onBack} className="text-gray-400 hover:text-white mb-6 text-sm cursor-pointer">
           ← Back
         </button>
-        
+
         <h2 className="text-2xl font-bold text-white mb-2">Before we start</h2>
         <p className="text-gray-400 mb-8">Tell us about your organization so we can tailor the assessment.</p>
 
@@ -87,6 +91,8 @@ export function IntakeForm({ onSubmit, onBack }: Props) {
               value={form.companyName}
               onChange={(e) => setForm({ ...form, companyName: e.target.value })}
               placeholder="Acme Corp"
+              autoComplete="organization"
+              maxLength={120}
             />
             {errors.companyName && <p className="text-titan-red text-xs mt-1">{errors.companyName}</p>}
           </div>
@@ -99,6 +105,8 @@ export function IntakeForm({ onSubmit, onBack }: Props) {
               value={form.contactName}
               onChange={(e) => setForm({ ...form, contactName: e.target.value })}
               placeholder="Jane Smith"
+              autoComplete="name"
+              maxLength={120}
             />
             {errors.contactName && <p className="text-titan-red text-xs mt-1">{errors.contactName}</p>}
           </div>
@@ -109,8 +117,11 @@ export function IntakeForm({ onSubmit, onBack }: Props) {
               type="email"
               className={inputClass("contactEmail")}
               value={form.contactEmail}
-              onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+              onChange={(e) => setForm({ ...form, contactEmail: e.target.value.trim() })}
               placeholder="jane@acme.com"
+              autoComplete="email"
+              inputMode="email"
+              maxLength={254}
             />
             {errors.contactEmail && <p className="text-titan-red text-xs mt-1">{errors.contactEmail}</p>}
           </div>
@@ -149,6 +160,24 @@ export function IntakeForm({ onSubmit, onBack }: Props) {
               ))}
             </div>
             {errors.employeeCount && <p className="text-titan-red text-xs mt-1">{errors.employeeCount}</p>}
+          </div>
+
+          <div className="rounded-xl border border-titan-slate/50 bg-titan-navy/40 p-4 text-sm text-gray-300">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.trackingConsent}
+                onChange={(e) => setForm({ ...form, trackingConsent: e.target.checked })}
+                className="mt-1 h-4 w-4 accent-cyan-400"
+              />
+              <span>
+                I agree that TitanGuard QuickScore may store my contact details and assessment attribution data for follow-up on this request. No sensitive assessment payload is shared with ad platforms.
+              </span>
+            </label>
+            <p className="mt-3 text-xs text-gray-400">
+              Required fields only: company name, contact name, contact email, industry, employee count, and campaign attribution used to measure requested follow-up.
+            </p>
+            {errors.trackingConsent && <p className="text-titan-red text-xs mt-2">{errors.trackingConsent}</p>}
           </div>
 
           <button

@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useEffect, useMemo, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { LandingPage } from "./components/LandingPage";
 import { IntakeForm } from "./components/IntakeForm";
 import { Assessment } from "./components/Assessment";
 import { Results } from "./components/Results";
+import { getUtmAttribution, type UtmAttribution } from "./lib/attribution";
 
 type Step = "landing" | "intake" | "assessment" | "results";
 
@@ -17,29 +18,62 @@ interface CompanyInfo {
   employeeCount: string;
 }
 
+function getFingerprint() {
+  const seed = [navigator.userAgent, navigator.language, window.screen.width, window.screen.height].join("|");
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) hash = (hash << 5) - hash + seed.charCodeAt(i);
+  return `fp-${Math.abs(hash)}`;
+}
+
 function App() {
   const [step, setStep] = useState<Step>("landing");
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [assessmentId, setAssessmentId] = useState<Id<"assessments"> | null>(null);
+  const [botProof, setBotProof] = useState<string>("");
+  const attribution: UtmAttribution = useMemo(() => getUtmAttribution(), []);
+  const fingerprint = useMemo(() => getFingerprint(), []);
 
+  const issueBotProof = useAction(api.assessments.issueBotProof);
   const submitAssessment = useMutation(api.assessments.submit);
-  const result = useQuery(
-    api.assessments.get,
-    assessmentId ? { id: assessmentId } : "skip"
-  );
+  const logEvent = useMutation(api.assessments.logEvent);
+  const result = useQuery(api.assessments.get, assessmentId ? { id: assessmentId } : "skip");
 
-  const handleIntakeSubmit = (info: CompanyInfo) => {
+  useEffect(() => {
+    void issueBotProof({ fingerprint }).then(setBotProof).catch((err) => {
+      console.error("Failed to issue bot proof", err);
+    });
+  }, [fingerprint, issueBotProof]);
+
+  const handleIntakeSubmit = async (info: CompanyInfo) => {
     setCompanyInfo(info);
+    await logEvent({
+      companyName: info.companyName,
+      contactEmail: info.contactEmail,
+      contactName: info.contactName,
+      eventType: "contact_captured",
+      eventLabel: info.industry,
+      ...attribution,
+      meta: {
+        employeeCount: info.employeeCount,
+      },
+    });
     setStep("assessment");
   };
 
   const handleAssessmentComplete = async (responses: Record<string, Record<string, number>>) => {
     if (!companyInfo) return;
-    
+    if (!botProof) {
+      alert("Verification check not ready. Please try again in a moment.");
+      return;
+    }
+
     try {
       const id = await submitAssessment({
         ...companyInfo,
         responses,
+        botProof,
+        fingerprint,
+        ...attribution,
       });
       setAssessmentId(id);
       setStep("results");
@@ -61,12 +95,7 @@ function App() {
     case "intake":
       return <IntakeForm onSubmit={handleIntakeSubmit} onBack={() => setStep("landing")} />;
     case "assessment":
-      return (
-        <Assessment
-          onComplete={handleAssessmentComplete}
-          onBack={() => setStep("intake")}
-        />
-      );
+      return <Assessment onComplete={handleAssessmentComplete} onBack={() => setStep("intake")} />;
     case "results":
       if (!result) {
         return (
@@ -78,7 +107,7 @@ function App() {
           </div>
         );
       }
-      return <Results data={result as any} onReset={handleReset} />;
+      return <Results data={result as any} onReset={handleReset} attribution={attribution} />;
     default:
       return <LandingPage onStart={() => setStep("intake")} />;
   }
