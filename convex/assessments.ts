@@ -11,6 +11,40 @@ const utmArgs = {
   referrer: v.optional(v.string()),
 };
 
+const EVENT_TYPE_ALLOWLIST = new Set([
+  "contact_captured",
+  "assessment_completed",
+  "thank_you_viewed",
+  "book_call_clicked",
+  "follow_up_requested",
+]);
+
+const META_KEY_ALLOWLIST = new Set([
+  "employeeCount",
+  "overallScore",
+  "riskLevel",
+  "destination",
+  "channel",
+]);
+
+function clampString(value: string | undefined, max: number): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  return trimmed.slice(0, max);
+}
+
+function sanitizeMeta(meta: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!meta) return undefined;
+  const entries = Object.entries(meta)
+    .filter(([key]) => META_KEY_ALLOWLIST.has(key))
+    .slice(0, 10)
+    .map(([key, value]) => [key, String(value).slice(0, 200)] as const);
+
+  if (entries.length === 0) return undefined;
+  return Object.fromEntries(entries);
+}
+
 export const submit = mutation({
   args: {
     companyName: v.string(),
@@ -109,8 +143,34 @@ export const logEvent = mutation({
     meta: v.optional(v.record(v.string(), v.string())),
   },
   handler: async (ctx, args) => {
+    if (!EVENT_TYPE_ALLOWLIST.has(args.eventType)) {
+      throw new Error("invalid eventType");
+    }
+
+    const sanitized = {
+      assessmentId: args.assessmentId,
+      companyName: clampString(args.companyName, 120),
+      contactEmail: clampString(args.contactEmail, 160),
+      contactName: clampString(args.contactName, 120),
+      eventType: args.eventType,
+      eventLabel: clampString(args.eventLabel, 80),
+      utmSource: clampString(args.utmSource, 80) || "direct",
+      utmMedium: clampString(args.utmMedium, 80) || "none",
+      utmCampaign: clampString(args.utmCampaign, 120) || "quickscore-default",
+      utmTerm: clampString(args.utmTerm, 120),
+      utmContent: clampString(args.utmContent, 120),
+      landingPath: clampString(args.landingPath, 400) || "/",
+      referrer: clampString(args.referrer, 240),
+      meta: sanitizeMeta(args.meta),
+    };
+
+    const approxPayloadSize = JSON.stringify(sanitized).length;
+    if (approxPayloadSize > 4000) {
+      throw new Error("event payload too large");
+    }
+
     await ctx.db.insert("leadEvents", {
-      ...args,
+      ...sanitized,
       createdAt: Date.now(),
     });
 
@@ -127,23 +187,6 @@ export const logEvent = mutation({
         lifecycleStage: "follow_up_requested",
       });
     }
-  },
-});
-
-export const getRecentLeadSnapshot = query({
-  args: {},
-  handler: async (ctx) => {
-    const latest = await ctx.db.query("assessments").order("desc").take(1);
-    if (latest.length === 0) return null;
-    const assessment = latest[0];
-    const events = await ctx.db
-      .query("leadEvents")
-      .withIndex("by_assessment", (q) => q.eq("assessmentId", assessment._id))
-      .collect();
-    return {
-      assessment,
-      events,
-    };
   },
 });
 

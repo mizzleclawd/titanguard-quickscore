@@ -1,9 +1,9 @@
 export interface UtmAttribution {
-  source: string;
-  medium: string;
-  campaign: string;
-  term?: string;
-  content?: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmTerm?: string;
+  utmContent?: string;
   landingPath: string;
   referrer?: string;
 }
@@ -11,11 +11,11 @@ export interface UtmAttribution {
 export function getUtmAttribution(): UtmAttribution {
   const params = new URLSearchParams(window.location.search);
   return {
-    source: params.get("utm_source") || params.get("source") || "direct",
-    medium: params.get("utm_medium") || params.get("medium") || "none",
-    campaign: params.get("utm_campaign") || params.get("campaign") || "quickscore-default",
-    term: params.get("utm_term") || undefined,
-    content: params.get("utm_content") || undefined,
+    utmSource: params.get("utm_source") || params.get("source") || "direct",
+    utmMedium: params.get("utm_medium") || params.get("medium") || "none",
+    utmCampaign: params.get("utm_campaign") || params.get("campaign") || "quickscore-default",
+    utmTerm: params.get("utm_term") || undefined,
+    utmContent: params.get("utm_content") || undefined,
     landingPath: `${window.location.pathname}${window.location.search}`,
     referrer: document.referrer || undefined,
   };
