@@ -22,6 +22,8 @@ See `sample-captured-lead-record.json` for the expected assessment + event snaps
 ## Boundary-control evidence
 - `abuse-control-proof.md` documents rate-limit and bot-proof rejection behavior
 - `handoff-failure-proof.md` documents authenticated handoff, retry, and dead-letter behavior
+- `automatic-handoff-worker-proof.md` documents pending/retry worker path and state transitions
+- `hmac-verifier-sample.md` documents HMAC-SHA256 signing and verifier example
 
 ## Security acceptance notes
 - `security-acceptance-gap-review.md` documents what is satisfied in-branch versus what still requires production-boundary implementation.

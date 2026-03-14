@@ -1,5 +1,6 @@
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { v } from "convex/values";
-import { action, internalAction, internalMutation, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 type MetaRecord = Record<string, string>;
@@ -21,10 +22,10 @@ const EVENT_TYPE_ALLOWLIST = new Set([
   "book_call_clicked",
   "follow_up_requested",
 ]);
-
 const META_KEY_ALLOWLIST = new Set(["employeeCount", "overallScore", "riskLevel", "destination", "channel"]);
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_ATTEMPTS = 5;
+const RATE_LIMIT_DAILY_MAX = 20;
 const RATE_LIMIT_BLOCK_MS = 30 * 60 * 1000;
 const HANDOFF_MAX_ATTEMPTS = 3;
 const HANDOFF_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000];
@@ -49,15 +50,6 @@ function sanitizeMeta(meta: MetaRecord | undefined): MetaRecord | undefined {
     .map(([key, value]) => [key, String(value).slice(0, 200)] as const);
   if (entries.length === 0) return undefined;
   return Object.fromEntries(entries);
-}
-
-function simpleHash(input: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `fnv-${(hash >>> 0).toString(16)}`;
 }
 
 function normalizeEvent(args: {
@@ -97,6 +89,17 @@ function normalizeEvent(args: {
   return sanitized;
 }
 
+function hmacSha256(secret: string, value: string): string {
+  return createHmac("sha256", secret).update(value).digest("hex");
+}
+
+function secureCompare(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
 async function enforceRateLimit(ctx: any, key: string) {
   const now = Date.now();
   const current = await ctx.db.query("submitRateLimits").withIndex("by_key", (q: any) => q.eq("key", key)).unique();
@@ -109,33 +112,28 @@ async function enforceRateLimit(ctx: any, key: string) {
     });
     return;
   }
-
-  if (current.blockedUntil && current.blockedUntil > now) {
-    throw new Error("rate limit exceeded");
-  }
+  if (current.blockedUntil && current.blockedUntil > now) throw new Error("rate limit exceeded");
 
   const withinWindow = now - current.windowStartedAt <= RATE_LIMIT_WINDOW_MS;
+  const withinDay = now - current.windowStartedAt <= 24 * 60 * 60 * 1000;
   const attempts = withinWindow ? current.attempts + 1 : 1;
-  const patch: Record<string, number> = {
+  const dailyAttempts = withinDay ? current.attempts + 1 : 1;
+  const patch: Record<string, number | undefined> = {
     attempts,
     lastSeenAt: now,
     windowStartedAt: withinWindow ? current.windowStartedAt : now,
   };
-
-  if (attempts > RATE_LIMIT_MAX_ATTEMPTS) {
+  if (attempts > RATE_LIMIT_MAX_ATTEMPTS || dailyAttempts > RATE_LIMIT_DAILY_MAX) {
     patch.blockedUntil = now + RATE_LIMIT_BLOCK_MS;
     await ctx.db.patch(current._id, patch);
     throw new Error("rate limit exceeded");
   }
-
-  if (current.blockedUntil) {
-    patch.blockedUntil = undefined as never;
-  }
+  patch.blockedUntil = undefined;
   await ctx.db.patch(current._id, patch);
 }
 
 async function verifyBotProofOrThrow(botProof: string, fingerprint: string) {
-  const raw = clampString(botProof, 400);
+  const raw = clampString(botProof, 800);
   if (!raw) throw new Error("bot proof missing");
   const [issuedAtRaw, nonce, providedSig] = raw.split(".");
   if (!issuedAtRaw || !nonce || !providedSig) throw new Error("invalid bot proof");
@@ -144,21 +142,19 @@ async function verifyBotProofOrThrow(botProof: string, fingerprint: string) {
   if (Date.now() - issuedAt > 15 * 60 * 1000) throw new Error("bot proof expired");
   const secret = process.env.TITANGUARD_BOT_PROOF_SECRET;
   if (!secret) throw new Error("bot proof secret missing");
-  const expected = simpleHash(`${issuedAt}.${nonce}.${fingerprint}.${secret}`);
-  if (expected !== providedSig) throw new Error("invalid bot proof");
+  const expected = hmacSha256(secret, `${issuedAt}.${nonce}.${fingerprint}`);
+  if (!secureCompare(expected, providedSig)) throw new Error("invalid bot proof");
 }
 
 export const issueBotProof = action({
   args: { fingerprint: v.string() },
   handler: async (_ctx, args) => {
     const fingerprint = clampString(args.fingerprint, 120) || "anon";
-    const nonce = Math.random().toString(36).slice(2, 12);
+    const nonce = randomUUID();
     const issuedAt = Date.now();
     const secret = process.env.TITANGUARD_BOT_PROOF_SECRET;
-    if (!secret) {
-      throw new Error("bot proof secret missing");
-    }
-    const signature = simpleHash(`${issuedAt}.${nonce}.${fingerprint}.${secret}`);
+    if (!secret) throw new Error("bot proof secret missing");
+    const signature = hmacSha256(secret, `${issuedAt}.${nonce}.${fingerprint}`);
     return `${issuedAt}.${nonce}.${signature}`;
   },
 });
@@ -182,7 +178,6 @@ export const submit = mutation({
     const categoryScores: Record<string, number> = {};
     let totalPoints = 0;
     let maxPoints = 0;
-
     for (const [category, questions] of Object.entries(args.responses)) {
       let catTotal = 0;
       let catMax = 0;
@@ -196,11 +191,8 @@ export const submit = mutation({
     }
 
     const overallScore = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
-    let riskLevel: string;
-    if (overallScore >= 80) riskLevel = "low";
-    else if (overallScore >= 60) riskLevel = "medium";
-    else if (overallScore >= 40) riskLevel = "high";
-    else riskLevel = "critical";
+    const riskLevel = overallScore >= 80 ? "low" : overallScore >= 60 ? "medium" : overallScore >= 40 ? "high" : "critical";
+    const now = Date.now();
 
     const id = await ctx.db.insert("assessments", {
       companyName: clampString(args.companyName, 120) || "Unknown",
@@ -212,7 +204,7 @@ export const submit = mutation({
       overallScore,
       categoryScores,
       riskLevel,
-      completedAt: Date.now(),
+      completedAt: now,
       reportViewed: false,
       utmSource: clampString(args.utmSource, 80) || "direct",
       utmMedium: clampString(args.utmMedium, 80) || "none",
@@ -233,7 +225,7 @@ export const submit = mutation({
       contactName: clampString(args.contactName, 120),
       eventType: "assessment_completed",
       eventLabel: riskLevel,
-      createdAt: Date.now(),
+      createdAt: now,
       utmSource: clampString(args.utmSource, 80) || "direct",
       utmMedium: clampString(args.utmMedium, 80) || "none",
       utmCampaign: clampString(args.utmCampaign, 120) || "quickscore-default",
@@ -244,8 +236,7 @@ export const submit = mutation({
       meta: { overallScore: String(overallScore), riskLevel },
     });
 
-    const payloadHash = simpleHash(JSON.stringify({ id, overallScore, riskLevel }));
-    const now = Date.now();
+    const payloadHash = hmacSha256(process.env.TITANGUARD_LEAD_WEBHOOK_SECRET || "dev-secret", JSON.stringify({ id, overallScore, riskLevel }));
     await ctx.db.insert("leadHandoffs", {
       assessmentId: id,
       destination: process.env.TITANGUARD_LEAD_WEBHOOK_URL || "configured-at-runtime",
@@ -256,16 +247,13 @@ export const submit = mutation({
       updatedAt: now,
       nextAttemptAt: now,
     });
-
     return id;
   },
 });
 
 export const get = query({
   args: { id: v.id("assessments") },
-  handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
-  },
+  handler: async (ctx, args) => ctx.db.get(args.id),
 });
 
 export const markReportViewed = mutation({
@@ -290,7 +278,6 @@ export const logEvent = mutation({
     if (!EVENT_TYPE_ALLOWLIST.has(args.eventType)) throw new Error("invalid eventType");
     const sanitized = normalizeEvent(args);
     await ctx.db.insert("leadEvents", { ...sanitized, createdAt: Date.now() });
-
     if (args.assessmentId && args.eventType === "book_call_clicked") {
       await ctx.db.patch(args.assessmentId, { bookedCall: true, lifecycleStage: "book_call_clicked" });
     }
@@ -305,38 +292,31 @@ export const processLeadHandoff = action({
   handler: async (ctx, args) => {
     const handoff = await ctx.runQuery(internal.assessments.getHandoffForProcessing, { handoffId: args.handoffId });
     if (!handoff) throw new Error("handoff not found");
-
     const endpoint = process.env.TITANGUARD_LEAD_WEBHOOK_URL;
     const secret = process.env.TITANGUARD_LEAD_WEBHOOK_SECRET;
     if (!endpoint || !secret) {
-      await ctx.runMutation(internal.assessments.recordHandoffFailure, {
-        handoffId: args.handoffId,
-        responseCode: 500,
-        responsePreview: "handoff env missing",
-      });
+      await ctx.runMutation(internal.assessments.recordHandoffFailure, { handoffId: args.handoffId, responseCode: 500, responsePreview: "handoff env missing" });
       return { ok: false };
     }
-
+    const timestamp = String(Date.now());
+    const nonce = randomUUID();
     const body = JSON.stringify(handoff.payload);
-    const signature = simpleHash(`${body}.${secret}`);
-
+    const signature = hmacSha256(secret, `${timestamp}.${nonce}.${body}`);
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-titanguard-signature": signature,
           "x-titanguard-event": "lead_assessment",
+          "x-titanguard-timestamp": timestamp,
+          "x-titanguard-nonce": nonce,
+          "x-titanguard-signature": signature,
         },
         body,
       });
       const preview = (await response.text()).slice(0, 200);
       if (!response.ok) {
-        await ctx.runMutation(internal.assessments.recordHandoffFailure, {
-          handoffId: args.handoffId,
-          responseCode: response.status,
-          responsePreview: preview,
-        });
+        await ctx.runMutation(internal.assessments.recordHandoffFailure, { handoffId: args.handoffId, responseCode: response.status, responsePreview: preview });
         return { ok: false };
       }
       await ctx.runMutation(internal.assessments.recordHandoffSuccess, { handoffId: args.handoffId, responseCode: response.status });
@@ -349,6 +329,19 @@ export const processLeadHandoff = action({
       });
       return { ok: false };
     }
+  },
+});
+
+export const processPendingLeadHandoffs = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const pending = await ctx.runQuery(internal.assessments.listDueHandoffs, {});
+    const results = [] as Array<{ handoffId: string; ok: boolean }>;
+    for (const handoff of pending) {
+      const result = await ctx.runAction(internal.assessments.processLeadHandoff, { handoffId: handoff._id });
+      results.push({ handoffId: handoff._id, ok: Boolean(result?.ok) });
+    }
+    return results;
   },
 });
 
@@ -369,7 +362,7 @@ export const getStats = query({
   },
 });
 
-export const getHandoffForProcessing = query({
+export const getHandoffForProcessing = internalQuery({
   args: { handoffId: v.id("leadHandoffs") },
   handler: async (ctx, args) => {
     const handoff = await ctx.db.get(args.handoffId);
@@ -396,6 +389,16 @@ export const getHandoffForProcessing = query({
   },
 });
 
+export const listDueHandoffs = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const handoffs = await ctx.db.query("leadHandoffs").withIndex("by_status", (q) => q.eq("status", "pending")).collect();
+    const retries = await ctx.db.query("leadHandoffs").withIndex("by_status", (q) => q.eq("status", "retry_pending")).collect();
+    return [...handoffs, ...retries].filter((row) => (row.nextAttemptAt || 0) <= now);
+  },
+});
+
 export const recordHandoffSuccess = internalMutation({
   args: { handoffId: v.id("leadHandoffs"), responseCode: v.number() },
   handler: async (ctx, args) => {
@@ -406,6 +409,7 @@ export const recordHandoffSuccess = internalMutation({
       attempts: handoff.attempts + 1,
       lastAttemptAt: Date.now(),
       updatedAt: Date.now(),
+      nextAttemptAt: undefined,
       deadLetterReason: undefined,
     });
     await ctx.db.insert("handoffAttempts", {
@@ -419,11 +423,7 @@ export const recordHandoffSuccess = internalMutation({
 });
 
 export const recordHandoffFailure = internalMutation({
-  args: {
-    handoffId: v.id("leadHandoffs"),
-    responseCode: v.number(),
-    responsePreview: v.string(),
-  },
+  args: { handoffId: v.id("leadHandoffs"), responseCode: v.number(), responsePreview: v.string() },
   handler: async (ctx, args) => {
     const handoff = await ctx.db.get(args.handoffId);
     if (!handoff) return;
@@ -444,34 +444,5 @@ export const recordHandoffFailure = internalMutation({
       responsePreview: args.responsePreview.slice(0, 200),
       createdAt: Date.now(),
     });
-  },
-});
-
-export const simulateRateLimitForTest = internalAction({
-  args: { fingerprint: v.string(), contactEmail: v.string(), botProof: v.string() },
-  handler: async (ctx, args) => {
-    let blocked = false;
-    for (let i = 0; i < RATE_LIMIT_MAX_ATTEMPTS + 2; i += 1) {
-      try {
-        await ctx.runMutation(internal.assessments.testBoundaryCheck, {
-          fingerprint: args.fingerprint,
-          contactEmail: args.contactEmail,
-          botProof: args.botProof,
-        });
-      } catch {
-        blocked = true;
-        break;
-      }
-    }
-    return { blocked };
-  },
-});
-
-export const testBoundaryCheck = internalMutation({
-  args: { fingerprint: v.string(), contactEmail: v.string(), botProof: v.string() },
-  handler: async (ctx, args) => {
-    await verifyBotProofOrThrow(args.botProof, args.fingerprint);
-    await enforceRateLimit(ctx, `${clampString(args.fingerprint, 120) || "anon"}:${clampString(args.contactEmail, 160) || "unknown"}`);
-    return true;
   },
 });
