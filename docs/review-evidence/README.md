@@ -18,3 +18,7 @@ See `sample-captured-lead-record.json` for the expected assessment + event snaps
 - UTM attribution fields
 - lifecycle stage
 - thank-you/book-call event trail
+
+## Security acceptance notes
+- `security-acceptance-gap-review.md` documents what is satisfied in-branch versus what still requires production-boundary implementation.
+- `retention-access-policy-draft.md` captures the draft retention/access policy pending owner confirmation.
