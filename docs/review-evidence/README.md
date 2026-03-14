@@ -23,6 +23,8 @@ See `sample-captured-lead-record.json` for the expected assessment + event snaps
 - `abuse-control-proof.md` documents rate-limit and bot-proof rejection behavior
 - `handoff-failure-proof.md` documents authenticated handoff, retry, and dead-letter behavior
 - `automatic-handoff-worker-proof.md` documents pending/retry worker path and state transitions
+- `automatic-trigger-proof.md` documents deterministic cron invocation path
+- `delivery-simulation-proof.md` documents success/retry/dead-letter transitions
 - `hmac-verifier-sample.md` documents HMAC-SHA256 signing and verifier example
 
 ## Security acceptance notes

@@ -1,4 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -53,7 +54,7 @@ function sanitizeMeta(meta: MetaRecord | undefined): MetaRecord | undefined {
 }
 
 function normalizeEvent(args: {
-  assessmentId?: string;
+  assessmentId?: Id<"assessments">;
   companyName?: string;
   contactEmail?: string;
   contactName?: string;
@@ -287,7 +288,7 @@ export const logEvent = mutation({
   },
 });
 
-export const processLeadHandoff = action({
+export const processLeadHandoff = internalAction({
   args: { handoffId: v.id("leadHandoffs") },
   handler: async (ctx, args) => {
     const handoff = await ctx.runQuery(internal.assessments.getHandoffForProcessing, { handoffId: args.handoffId });
